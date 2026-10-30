@@ -1,0 +1,80 @@
+YAML
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Production-Ready Secure S3 Bucket with Lifecycle Rules, 
+  Default Encryption, and Public Access Block (DevSecOps & FinOps Best Practices).
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Target deployment environment.
+
+  AppProjectName:
+    Type: String
+    Default: enterprise-data-store
+    Description: Name of the project or application owning this bucket.
+
+Resources:
+  # 1. Bucket S3 Seguro
+  AppSecureBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AppProjectName}-${Environment}-${AWS::AccountId}-${AWS::Region}"
+      
+      # [DevSecOps] Bloqueio total de acesso público a nível de bucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      # [DevSecOps] Criptografia de dados em repouso (SSE-S3)
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      # [DevSecOps] Versionamento ativo para proteção contra deleção acidental e ransomware
+      VersioningConfiguration:
+        Status: Enabled
+
+      # [FinOps] Regras de Ciclo de Vida para redução automática de custos de armazenamento
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionAndCleanUpRule
+            Status: Enabled
+            # Move objetos não correntes (versões antigas) para Standard-IA após 30 dias
+            NoncurrentVersionTransitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 30
+            # Expira/Deleta versões antigas após 90 dias
+            NoncurrentVersionExpirationInDays: 90
+            # Exclui marcadores de deleção expirados e uploads multipartes incompletos
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Owner
+          Value: Gabriel Marinho
+
+Outputs:
+  BucketName:
+    Description: Name of the created S3 Bucket
+    Value: !Ref AppSecureBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketName"
+
+  BucketArn:
+    Description: ARN of the created S3 Bucket
+    Value: !GetAtt AppSecureBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BucketArn"
